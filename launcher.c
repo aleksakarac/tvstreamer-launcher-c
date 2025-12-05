@@ -30,7 +30,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#define VERSION "1.0.1"
+#define VERSION "1.0.2"
 
 /* Arc Blueberry Color Palette */
 #define COL_BG              0x11, 0x14, 0x22, 0xFF
@@ -127,6 +127,7 @@ typedef struct {
     int settings_selected;
     int needs_redraw;
     int last_minute;
+    int app_running;  /* 1 if an app is in foreground */
 
     /* Stats */
     Stats stats;
@@ -586,6 +587,9 @@ static void draw(Launcher *l) {
 
 /* ============ App Launch ============ */
 
+/* Track launched app PID */
+static pid_t launched_app_pid = 0;
+
 static void launch_app(const char *command) {
     pid_t pid = fork();
     if (pid == 0) {
@@ -594,11 +598,29 @@ static void launch_app(const char *command) {
         execl("/bin/sh", "sh", "-c", command, NULL);
         exit(1);
     }
-    /* Parent waits */
+    /* Parent: store PID and don't wait - let app run in foreground */
     if (pid > 0) {
-        int status;
-        waitpid(pid, &status, 0);
+        launched_app_pid = pid;
     }
+}
+
+/* Check if launched app is still running */
+static int is_app_running(void) {
+    if (launched_app_pid <= 0) return 0;
+
+    int status;
+    pid_t result = waitpid(launched_app_pid, &status, WNOHANG);
+    if (result == launched_app_pid) {
+        /* App has exited */
+        launched_app_pid = 0;
+        return 0;
+    } else if (result == 0) {
+        /* App still running */
+        return 1;
+    }
+    /* Error - assume not running */
+    launched_app_pid = 0;
+    return 0;
 }
 
 /* ============ Confirmation Dialog ============ */
@@ -709,7 +731,9 @@ static int handle_events(Launcher *l) {
                     } else {
                         launch_app(apps[l->selected].command);
                     }
-                    l->needs_redraw = 1;
+                    /* Hide launcher and mark app as running */
+                    l->app_running = 1;
+                    SDL_HideWindow(l->window);
                     break;
 
                 case SDLK_r:
@@ -908,6 +932,21 @@ static void run(Launcher *l) {
     while (1) {
         /* Handle events */
         if (!handle_events(l)) break;
+
+        /* Check if launched app is still running */
+        if (l->app_running) {
+            if (!is_app_running()) {
+                /* App closed - show launcher again */
+                l->app_running = 0;
+                SDL_ShowWindow(l->window);
+                SDL_RaiseWindow(l->window);
+                l->needs_redraw = 1;
+            } else {
+                /* App still running - sleep longer to save CPU */
+                SDL_Delay(200);
+                continue;
+            }
+        }
 
         /* Check clock minute change */
         time_t now = time(NULL);
