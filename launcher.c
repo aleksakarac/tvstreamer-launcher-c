@@ -30,13 +30,13 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#define VERSION "1.0.0"
+#define VERSION "1.0.1"
 
 /* Arc Blueberry Color Palette */
 #define COL_BG              0x11, 0x14, 0x22, 0xFF
 #define COL_BG_SECONDARY    0x1A, 0x1E, 0x33, 0xFF
-#define COL_BG_TILE         0x1E, 0x23, 0x37, 0xB4
-#define COL_BG_TILE_SEL     0x2D, 0x34, 0x50, 0xC8
+#define COL_BG_TILE         0x1E, 0x23, 0x37, 0xB8
+#define COL_BG_TILE_SEL     0x2D, 0x34, 0x50, 0xD0
 #define COL_FG              0xBC, 0xC1, 0xDC, 0xFF
 #define COL_FG_DIM          0x42, 0x47, 0x61, 0xFF
 #define COL_ACCENT          0x8E, 0xB0, 0xE6, 0xFF
@@ -363,10 +363,16 @@ static TTF_Font *load_font(const char *path, int size) {
         if (f) return f;
     }
 
-    /* Try default paths */
+    /* Try default paths - covers Arch, Debian, Ubuntu, Fedora */
     const char *defaults[] = {
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf",
+        "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/TTF/LiberationSans-Regular.ttf",
         NULL
     };
 
@@ -409,11 +415,11 @@ static void cache_surfaces(Launcher *l) {
     l->settings_bg_normal = create_rounded_rect_texture(l, 50, 50, 25, 0x1A, 0x1E, 0x33, 0x96);
     l->settings_bg_selected = create_rounded_rect_texture(l, 56, 56, 28, 0x2D, 0x34, 0x50, 0xC8);
 
-    /* Stats bar background */
-    l->stats_bar_w = 580;
-    l->stats_bar_h = 120;
-    l->stats_bar_bg = create_rounded_rect_texture(l, l->stats_bar_w, l->stats_bar_h, 20,
-                                                   0x1A, 0x1E, 0x33, 0xC8);
+    /* Stats bar background - more visible */
+    l->stats_bar_w = 600;
+    l->stats_bar_h = 100;
+    l->stats_bar_bg = create_rounded_rect_texture(l, l->stats_bar_w, l->stats_bar_h, 16,
+                                                   0x1A, 0x1E, 0x33, 0xD8);
 
     /* Tile labels and icons */
     for (int i = 0; i < NUM_APPS; i++) {
@@ -453,7 +459,7 @@ static void calc_layout(Launcher *l) {
     }
 
     l->stats_bar_x = (l->width - l->stats_bar_w) / 2;
-    l->stats_bar_y = l->height - l->stats_bar_h - 40;
+    l->stats_bar_y = l->height - l->stats_bar_h - 65;
 }
 
 /* ============ Drawing ============ */
@@ -556,24 +562,24 @@ static void draw(Launcher *l) {
         int x = l->stats_bar_x + i * stat_w + stat_w / 2;
         SDL_Color col = get_stat_color(stat_values[i], i == 2);
 
-        /* Label */
-        blit_texture_centered(l, l->stat_labels[i], x, l->stats_bar_y + 25);
+        /* Label at top */
+        blit_texture_centered(l, l->stat_labels[i], x, l->stats_bar_y + 15);
 
-        /* Value */
+        /* Value in middle */
         snprintf(buf, sizeof(buf), "%d%s", stat_values[i], stat_units[i]);
         SDL_Texture *val_tex = render_text(l, l->font_stat_value, buf, col);
-        blit_texture_centered(l, val_tex, x, l->stats_bar_y + 55);
+        blit_texture_centered(l, val_tex, x, l->stats_bar_y + 48);
         SDL_DestroyTexture(val_tex);
 
-        /* Icon */
+        /* Icon at bottom */
         SDL_Texture *icon_tex = render_text(l, l->font_icon_small,
             (const char*[4]){ICON_CPU, ICON_MEMORY, ICON_TEMP, ICON_DISK}[i], col);
-        blit_texture_centered(l, icon_tex, x, l->stats_bar_y + 95);
+        blit_texture_centered(l, icon_tex, x, l->stats_bar_y + 80);
         SDL_DestroyTexture(icon_tex);
     }
 
-    /* Help icon */
-    blit_texture_centered(l, l->help_text, l->width - 40, l->height - 40);
+    /* Help icon in bottom-right */
+    blit_texture_centered(l, l->help_text, l->width - 35, l->height - 50);
 
     SDL_RenderPresent(l->renderer);
 }
@@ -762,12 +768,17 @@ static Launcher *launcher_create(void) {
         l->width = 1920;
         l->height = 1080;
     }
-
-    /* Create window */
+    /* Create window - use borderless fullscreen for better compositor compatibility */
     l->window = SDL_CreateWindow("TvStreamer",
-                                  SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                  0, 0,
                                   l->width, l->height,
-                                  SDL_WINDOW_FULLSCREEN_DESKTOP | SDL_WINDOW_SHOWN);
+                                  SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN);
+
+    /* Get actual window size after creation */
+    int actual_w, actual_h;
+    SDL_GetWindowSize(l->window, &actual_w, &actual_h);
+    l->width = actual_w;
+    l->height = actual_h;
     if (!l->window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         launcher_destroy(l);
@@ -791,16 +802,13 @@ static Launcher *launcher_create(void) {
     SDL_ShowCursor(SDL_DISABLE);
 
     /* Load fonts */
-    fprintf(stderr, "Loading fonts...\n");
     l->font_clock = load_font(NULL, 180);
-    fprintf(stderr, "Clock font: %p\n", (void*)l->font_clock);
     l->font_date = load_font(NULL, 42);
     l->font_tile = load_font(NULL, 22);
     l->font_stat_value = load_font(NULL, 36);
     l->font_stat_label = load_font(NULL, 16);
     l->font_icon = load_nerd_font(42);
     l->font_icon_small = load_nerd_font(22);
-    fprintf(stderr, "All fonts loaded\n");
 
     if (!l->font_clock) {
         fprintf(stderr, "Failed to load clock font\n");
