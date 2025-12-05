@@ -357,15 +357,21 @@ static SDL_Texture *load_background(Launcher *l) {
 /* ============ Font Loading ============ */
 
 static TTF_Font *load_font(const char *path, int size) {
-    const char *paths[] = {
-        path,
+    /* Try user-provided path first */
+    if (path) {
+        TTF_Font *f = TTF_OpenFont(path, size);
+        if (f) return f;
+    }
+
+    /* Try default paths */
+    const char *defaults[] = {
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         NULL
     };
 
-    for (int i = 0; paths[i]; i++) {
-        TTF_Font *f = TTF_OpenFont(paths[i], size);
+    for (int i = 0; defaults[i]; i++) {
+        TTF_Font *f = TTF_OpenFont(defaults[i], size);
         if (f) return f;
     }
     return NULL;
@@ -375,6 +381,8 @@ static TTF_Font *load_nerd_font(int size) {
     const char *paths[] = {
         "/usr/share/fonts/TTF/JetBrainsMonoNerdFont-Regular.ttf",
         "/usr/share/fonts/TTF/JetBrainsMonoNerdFontMono-Regular.ttf",
+        "/usr/share/fonts/TTF/JetBrainsMonoNLNerdFont-Regular.ttf",
+        "/usr/share/fonts/TTF/JetBrainsMonoNLNerdFontMono-Regular.ttf",
         NULL
     };
 
@@ -783,18 +791,32 @@ static Launcher *launcher_create(void) {
     SDL_ShowCursor(SDL_DISABLE);
 
     /* Load fonts */
+    fprintf(stderr, "Loading fonts...\n");
     l->font_clock = load_font(NULL, 180);
+    fprintf(stderr, "Clock font: %p\n", (void*)l->font_clock);
     l->font_date = load_font(NULL, 42);
     l->font_tile = load_font(NULL, 22);
     l->font_stat_value = load_font(NULL, 36);
     l->font_stat_label = load_font(NULL, 16);
     l->font_icon = load_nerd_font(42);
     l->font_icon_small = load_nerd_font(22);
+    fprintf(stderr, "All fonts loaded\n");
 
-    if (!l->font_clock || !l->font_tile) {
-        fprintf(stderr, "Failed to load fonts\n");
+    if (!l->font_clock) {
+        fprintf(stderr, "Failed to load clock font\n");
         launcher_destroy(l);
         return NULL;
+    }
+    if (!l->font_tile) {
+        fprintf(stderr, "Failed to load tile font\n");
+        launcher_destroy(l);
+        return NULL;
+    }
+    if (!l->font_icon) {
+        fprintf(stderr, "Warning: Failed to load Nerd Font for icons, using fallback\n");
+        /* Use tile font as fallback for icons */
+        l->font_icon = l->font_tile;
+        l->font_icon_small = l->font_stat_label;
     }
 
     /* Load background */

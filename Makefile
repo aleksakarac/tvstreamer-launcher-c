@@ -19,8 +19,8 @@ OBJ = $(SRC:.c=.o)
 # Output
 TARGET = tvstreamer-launcher
 
-# Raspberry Pi optimized flags
-PI_CFLAGS = -O3 -mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mfloat-abi=hard -Wall -Wextra -DNDEBUG
+# Raspberry Pi 4 (aarch64) optimized flags
+PI_CFLAGS = -O3 -mcpu=cortex-a72 -Wall -Wextra -DNDEBUG
 
 .PHONY: all clean debug install pi
 
