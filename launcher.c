@@ -30,7 +30,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#define VERSION "1.0.2"
+#define VERSION "1.0.4"
 
 /* Arc Blueberry Color Palette */
 #define COL_BG              0x11, 0x14, 0x22, 0xFF
@@ -417,10 +417,10 @@ static void cache_surfaces(Launcher *l) {
     l->settings_bg_selected = create_rounded_rect_texture(l, 56, 56, 28, 0x2D, 0x34, 0x50, 0xC8);
 
     /* Stats bar background - more visible */
-    l->stats_bar_w = 600;
-    l->stats_bar_h = 100;
-    l->stats_bar_bg = create_rounded_rect_texture(l, l->stats_bar_w, l->stats_bar_h, 16,
-                                                   0x1A, 0x1E, 0x33, 0xD8);
+    l->stats_bar_w = 580;  /* Python: 580 */
+    l->stats_bar_h = 120;  /* Python: 120 */
+    l->stats_bar_bg = create_rounded_rect_texture(l, l->stats_bar_w, l->stats_bar_h, 20,
+                                                   0x1A, 0x1E, 0x33, 0xC8);  /* radius=20, alpha=200 like Python */
 
     /* Tile labels and icons */
     for (int i = 0; i < NUM_APPS; i++) {
@@ -460,7 +460,8 @@ static void calc_layout(Launcher *l) {
     }
 
     l->stats_bar_x = (l->width - l->stats_bar_w) / 2;
-    l->stats_bar_y = l->height - l->stats_bar_h - 65;
+    /* Use larger margin for TV overscan - 120px from bottom */
+    l->stats_bar_y = l->height - l->stats_bar_h - 120;
 }
 
 /* ============ Drawing ============ */
@@ -490,14 +491,22 @@ static void draw(Launcher *l) {
     snprintf(buf, sizeof(buf), "%02d:%02d", t->tm_hour, t->tm_min);
     SDL_Color fg = make_color(COL_FG);
     SDL_Texture *clock_tex = render_text(l, l->font_clock, buf, fg);
+    int clock_w, clock_h;
+    SDL_QueryTexture(clock_tex, NULL, NULL, &clock_w, &clock_h);
     int clock_y = (int)(l->height * 0.12);
-    blit_texture_centered(l, clock_tex, l->width / 2, clock_y + 90);
+    /* Python blits at top-left, so clock_y is top of text */
+    SDL_Rect clock_dst = {(l->width - clock_w) / 2, clock_y, clock_w, clock_h};
+    SDL_RenderCopy(l->renderer, clock_tex, NULL, &clock_dst);
     SDL_DestroyTexture(clock_tex);
 
-    /* Date */
+    /* Date - positioned right below clock with 5px gap */
     strftime(buf, sizeof(buf), "%A, %B %d", t);
     SDL_Texture *date_tex = render_text(l, l->font_date, buf, fg);
-    blit_texture_centered(l, date_tex, l->width / 2, clock_y + 200);
+    int date_w, date_h;
+    SDL_QueryTexture(date_tex, NULL, NULL, &date_w, &date_h);
+    int date_y = clock_y + clock_h + 5;
+    SDL_Rect date_dst = {(l->width - date_w) / 2, date_y, date_w, date_h};
+    SDL_RenderCopy(l->renderer, date_tex, NULL, &date_dst);
     SDL_DestroyTexture(date_tex);
 
     /* Settings icon */
@@ -547,8 +556,8 @@ static void draw(Launcher *l) {
         blit_texture_centered(l, is_sel ? l->tile_icons[i] : l->tile_icons_dim[i],
                              r->x + r->w / 2, icon_y);
 
-        /* Label */
-        blit_texture_centered(l, l->tile_labels[i], r->x + r->w / 2, r->y + r->h - 25);
+        /* Label - Python uses rect.bottom - 35 */
+        blit_texture_centered(l, l->tile_labels[i], r->x + r->w / 2, r->y + r->h - 35);
     }
 
     /* Stats bar */
@@ -566,21 +575,21 @@ static void draw(Launcher *l) {
         /* Label at top */
         blit_texture_centered(l, l->stat_labels[i], x, l->stats_bar_y + 15);
 
-        /* Value in middle */
+        /* Value in middle - Python uses +40 from stats_bar_y */
         snprintf(buf, sizeof(buf), "%d%s", stat_values[i], stat_units[i]);
         SDL_Texture *val_tex = render_text(l, l->font_stat_value, buf, col);
-        blit_texture_centered(l, val_tex, x, l->stats_bar_y + 48);
+        blit_texture_centered(l, val_tex, x, l->stats_bar_y + 55);  /* Adjusted for centered text */
         SDL_DestroyTexture(val_tex);
 
         /* Icon at bottom */
         SDL_Texture *icon_tex = render_text(l, l->font_icon_small,
             (const char*[4]){ICON_CPU, ICON_MEMORY, ICON_TEMP, ICON_DISK}[i], col);
-        blit_texture_centered(l, icon_tex, x, l->stats_bar_y + 80);
+        blit_texture_centered(l, icon_tex, x, l->stats_bar_y + 90);
         SDL_DestroyTexture(icon_tex);
     }
 
-    /* Help icon in bottom-right */
-    blit_texture_centered(l, l->help_text, l->width - 35, l->height - 50);
+    /* Help icon in bottom-right - Python uses width - 40, height - 40 with centered text */
+    blit_texture_centered(l, l->help_text, l->width - 40, l->height - 40);
 
     SDL_RenderPresent(l->renderer);
 }
